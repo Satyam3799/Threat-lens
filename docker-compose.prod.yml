@@ -1,0 +1,173 @@
+# Production stack for Linux VPS. Start with:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Requires a .env file (copy from .env.example). Postgres and Redis are internal only.
+
+x-backend-build: &backend-build
+  context: .
+  dockerfile: backend/Dockerfile
+
+x-app-environment: &app-environment
+  APP_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  POSTGRES_SSLMODE: disable
+  REDIS_URL: redis://redis:6379/0
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/1
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+  CORS_ORIGINS: ${CORS_ORIGINS}
+  ENABLE_INTEL_ENRICHMENT: ${ENABLE_INTEL_ENRICHMENT:-true}
+  FULL_PORT_SCAN_ENABLED: ${FULL_PORT_SCAN_ENABLED:-false}
+  ALLOW_PRIVATE_SCAN_TARGETS: ${ALLOW_PRIVATE_SCAN_TARGETS:-false}
+  SCAN_TIMEOUT_SECONDS: ${SCAN_TIMEOUT_SECONDS:-120}
+  MAX_GLOBAL_ACTIVE_SCANS: ${MAX_GLOBAL_ACTIVE_SCANS:-4}
+  MAX_USER_ACTIVE_SCANS: ${MAX_USER_ACTIVE_SCANS:-1}
+  SHODAN_API_KEY: ${SHODAN_API_KEY:-}
+  VT_API_KEY: ${VT_API_KEY:-}
+  NVD_API_KEY: ${NVD_API_KEY:-}
+  INTEL_HTTP_TIMEOUT_SECONDS: ${INTEL_HTTP_TIMEOUT_SECONDS:-12}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - threat-lens-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - threat-lens-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: *backend-build
+    restart: unless-stopped
+    command:
+      [
+        "uvicorn",
+        "backend.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--proxy-headers",
+        "--forwarded-allow-ips",
+        "*",
+      ]
+    environment:
+      <<: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - threat-lens-internal
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  worker:
+    build: *backend-build
+    restart: unless-stopped
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    command:
+      [
+        "celery",
+        "-A",
+        "backend.worker.celery_app.celery_app",
+        "worker",
+        "--loglevel=INFO",
+        "--pool=solo",
+        "--concurrency=1",
+      ]
+    environment:
+      <<: *app-environment
+      RUNNING_IN_DOCKER: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - threat-lens-internal
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    restart: unless-stopped
+    networks:
+      - threat-lens-internal
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    networks:
+      - threat-lens-internal
+
+networks:
+  threat-lens-internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

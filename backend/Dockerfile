@@ -1,4 +1,3 @@
-# Legacy path for `docker build .` — prefer backend/Dockerfile (same contents).
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

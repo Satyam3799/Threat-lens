@@ -30,7 +30,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     ports:
       - "${BACKEND_PORT:-8000}:8000"
@@ -69,7 +69,7 @@ services:
     profiles: ["container-worker"]
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     cap_add:
       - NET_RAW

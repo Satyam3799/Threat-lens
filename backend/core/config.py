@@ -32,6 +32,7 @@ def _get_cors_origins() -> tuple[str, ...]:
 @dataclass(frozen=True)
 class Settings:
     environment: str = os.getenv("APP_ENV", "development")
+    log_level: str = os.getenv("LOG_LEVEL", "INFO")
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     celery_broker_url: str = os.getenv("CELERY_BROKER_URL", os.getenv("REDIS_URL", "redis://localhost:6379/0"))
     celery_result_backend: str = os.getenv("CELERY_RESULT_BACKEND", os.getenv("REDIS_URL", "redis://localhost:6379/1"))
@@ -52,6 +53,10 @@ class Settings:
     vt_api_key: str = os.getenv("VT_API_KEY", "")
     nvd_api_key: str = os.getenv("NVD_API_KEY", "")
     intel_http_timeout_seconds: int = _get_int_env("INTEL_HTTP_TIMEOUT_SECONDS", 12)
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.strip().lower() == "production"
 
 
 settings = Settings()

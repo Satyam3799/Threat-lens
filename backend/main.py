@@ -11,7 +11,9 @@ from slowapi import _rate_limit_exceeded_handler
 
 from backend.core.audit import configure_audit_logging
 from backend.core.config import settings
+from backend.core.logging_config import configure_app_logging
 from backend.core.queue_health import is_queue_available
+from backend.core.startup import validate_settings_for_startup
 from backend.core.rate_limit import limiter
 from backend.models.scan import Scan
 from backend.migrations import run_startup_migrations
@@ -37,6 +39,9 @@ app = FastAPI(
     title="Threat Lens API",
     version="0.1.0",
     lifespan=lifespan,
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
 )
 
 app.add_middleware(

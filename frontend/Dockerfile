@@ -8,7 +8,8 @@ RUN npm ci
 COPY . .
 
 ARG VITE_API_URL=http://localhost:8000
-ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL \
+    NODE_ENV=production
 
 RUN npm run build
 
@@ -22,4 +23,4 @@ COPY --from=build /app/dist ./dist
 
 EXPOSE 5173
 
-CMD ["serve", "-s", "dist", "-l", "tcp://0.0.0.0:5173"]
+CMD ["serve", "-s", "dist", "-l", "tcp://0.0.0.0:5173", "-n"]
