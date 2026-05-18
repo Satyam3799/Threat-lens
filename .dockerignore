@@ -1,0 +1,14 @@
+venv/
+.venv/
+.venv-1/
+__pycache__/
+*.py[cod]
+.env
+.git/
+.gitignore
+frontend/node_modules/
+frontend/dist/
+*.md
+terminals/
+agent-tools/
+agent-transcripts/
